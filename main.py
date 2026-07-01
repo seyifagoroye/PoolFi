@@ -2,7 +2,8 @@ import logging
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from routers import auth
+from routers.auth import router as auth_router
+from routers.protected_test import router as test_router # 1. Import the test lock
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,19 +25,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router)
+# Mount Routers
+app.include_router(auth_router)
+app.include_router(test_router) # 2. Register the locked route handler
 
 @app.get("/")
 def read_root():
     return {"message": "PoolFi API is live and running"}
 
-@app.get("/health")
+@app.get("/health", tags=["System Health"])
 def health_check():
     return {"status": "healthy", "service": "poolfi_backend"}
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled exception on {request.url.path}: {str(exc)}", exc_info=True)
+    logger.error(f"Unhandled system exception on {request.url.path}: {str(exc)}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "An internal server error occurred."}
