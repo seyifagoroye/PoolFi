@@ -57,3 +57,6 @@ from routers import webhooks
 app.include_router(webhooks.router)
 
 logger.info("PoolFi core routing layers successfully initialized.")
+# Phase 6: Outbound Pot Transfers & Payouts Engine
+from routers import transfers
+app.include_router(transfers.router)
