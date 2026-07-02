@@ -134,3 +134,9 @@ class WebhookEventResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        from pydantic import BaseModel, Field
+from uuid import UUID
+
+class MemberInviteSchema(BaseModel):
+    user_id: UUID
+    rotation_position: int = Field(..., gt=0, description="Position in the rotation order")

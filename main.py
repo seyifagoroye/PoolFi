@@ -47,5 +47,12 @@ app.include_router(auth.router)
 # Phase 4: Savings Groups & Ledger Management Engine
 from routers import groups
 app.include_router(groups.router)
+# Phase 4: Savings Groups & Ledger Management Engine
+from routers import groups
+app.include_router(groups.router)
+
+# Mount Members Management Router
+from routers import members
+app.include_router(members.router)
 
 logger.info("PoolFi core routing layers successfully initialized.")

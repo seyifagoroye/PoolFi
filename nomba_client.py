@@ -71,7 +71,7 @@ class NombaClient:
         directly to your sub-account workspace balance.
         """
         # CRITICAL REFACTOR: Points directly to Nomba's sub-account path structure
-        url = f"{self.base_url}/accounts/virtual/{self.sub_account_id}"
+        url = f"{self.base_url}/accounts/virtual"
         
         async with httpx.AsyncClient() as client:
             token = await self.get_access_token(client)
