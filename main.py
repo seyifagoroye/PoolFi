@@ -44,15 +44,16 @@ async def health_check():
 from routers import auth
 app.include_router(auth.router)
 
-# Phase 4: Savings Groups & Ledger Management Engine
-from routers import groups
-app.include_router(groups.router)
-# Phase 4: Savings Groups & Ledger Management Engine
+# Phase 4: Savings Groups Management Engine
 from routers import groups
 app.include_router(groups.router)
 
-# Mount Members Management Router
+# Phase 4: Members Management Router
 from routers import members
 app.include_router(members.router)
+
+# Phase 5: Webhooks Ingress & Reconciliation Engine
+from routers import webhooks
+app.include_router(webhooks.router)
 
 logger.info("PoolFi core routing layers successfully initialized.")
