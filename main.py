@@ -1,46 +1,51 @@
-import logging
-from fastapi import FastAPI, Request, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from routers.auth import router as auth_router
-from routers.protected_test import router as test_router # 1. Import the test lock
+"""
+PoolFi - Automated Digital Infrastructure for Rotating Savings Groups (Ajo/Esusu)
+Main Application Core
+"""
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+import logging
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+# Initialize central core logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("poolfi_core")
 
 app = FastAPI(
     title="PoolFi API",
     description="Automated digital infrastructure for rotating savings groups (Ajo/Esusu) in Nigeria.",
-    version="1.0.0"
+    version="1.0.0",
+    openapi_url="/openapi.json"
 )
 
+# Cross-Origin Resource Sharing (CORS) Configuration for Frontend Handshakes
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Adjust to specific domains for production deployment
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount Routers
-app.include_router(auth_router)
-app.include_router(test_router) # 2. Register the locked route handler
-
-@app.get("/")
-def read_root():
-    return {"message": "PoolFi API is live and running"}
+# Root & System Health Check Endpoints
+@app.get("/", tags=["System Health"])
+async def read_root():
+    return {"message": "Welcome to PoolFi API Infrastructure"}
 
 @app.get("/health", tags=["System Health"])
-def health_check():
-    return {"status": "healthy", "service": "poolfi_backend"}
+async def health_check():
+    return {"status": "healthy"}
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled system exception on {request.url.path}: {str(exc)}", exc_info=True)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "An internal server error occurred."}
-    )
+# ---------------------------------------------------------------------
+# ROUTERS ROUTING MATRIX
+# ---------------------------------------------------------------------
+
+# Phase 2 & 3: Authentication Infrastructure
+from routers import auth
+app.include_router(auth.router)
+
+# Phase 4: Savings Groups & Ledger Management Engine
+from routers import groups
+app.include_router(groups.router)
+
+logger.info("PoolFi core routing layers successfully initialized.")
