@@ -39,6 +39,7 @@ class PayoutExecutionResponse(BaseModel):
     amount_disbursed: float
     nomba_reference: str
     status: str
+    group_lifecycle_status: str
 
 # ---------------------------------------------------------------------
 # CORE ENDPOINTS
@@ -52,9 +53,8 @@ async def trigger_cyclic_pot_payout(
 ):
     """
     Evaluates a savings group cycle, aggregates successfully matched contributions,
-    and disburses the entire pot balance to the designated turn-order recipient.
+    disburses the entire pot balance, and automatically increments or terminates the lifecycle.
     """
-    # 1. Fetch target group sequence metadata
     group = db.query(Group).filter(Group.id == payload.group_id).first()
     if not group:
         raise HTTPException(
@@ -62,7 +62,12 @@ async def trigger_cyclic_pot_payout(
             detail="The requested savings group does not exist within the system schema."
         )
 
-    # 2. Determine who owns the current slot rotation cycle
+    if group.status == "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lifecycle Block: This rotating savings group has already concluded all cycles and is marked completed."
+        )
+
     current_recipient = db.query(GroupMember).filter(
         GroupMember.group_id == group.id,
         GroupMember.draw_order == group.current_cycle
@@ -74,7 +79,6 @@ async def trigger_cyclic_pot_payout(
             detail=f"Data Mismatch: No member assigned to cycle slot position {group.current_cycle}."
         )
 
-    # 3. Prevent duplicate payouts for the exact same rotation round
     existing_payout = db.query(Payout).filter(
         Payout.group_id == group.id,
         Payout.cycle_number == group.current_cycle,
@@ -87,22 +91,18 @@ async def trigger_cyclic_pot_payout(
             detail=f"Payout Protection Block: Cycle {group.current_cycle} pot has already been disbursed."
         )
 
-    # 4. Sum up total collected payments from the contribution matrix
     total_collected = db.query(func.sum(Contribution.paid_amount)).filter(
         Contribution.group_id == group.id,
         Contribution.cycle_number == group.current_cycle,
         Contribution.status == "paid"
     ).scalar() or 0.0
 
-    # Safety check: Prevent firing empty payouts if nobody contributed yet
     if float(total_collected) <= 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Process Halt: Total collected balance for this cycle round is currently zero."
         )
 
-    # 5. Interface with Nomba Outbound Transfer Framework Simulation Gateway
-    # In a full staging pipeline, this builds the internal Bearer signature token and executes an outbound POST request.
     nomba_mock_ref = f"TX-NOMBA-{uuid.uuid4().hex[:12].upper()}"
     
     logger.info(
@@ -111,7 +111,6 @@ async def trigger_cyclic_pot_payout(
     )
 
     try:
-        # Create persistent ledger payout entry block
         payout_record = Payout(
             group_id=group.id,
             member_id=current_recipient.user_id,
@@ -123,18 +122,26 @@ async def trigger_cyclic_pot_payout(
         )
         db.add(payout_record)
 
-        # Safely increment group status metadata to the next round cycle slot automatically
-        group.current_cycle += 1
+        total_members = db.query(GroupMember).filter(GroupMember.group_id == group.id).count()
+        executed_cycle = group.current_cycle
+        
+        if group.current_cycle >= total_members:
+            group.status = "completed"
+            logger.info(f"Lifecycle Event: Group {group.id} has successfully concluded all {total_members} rotation blocks.")
+        else:
+            group.current_cycle += 1
+
         db.commit()
 
         return PayoutExecutionResponse(
             message="Cyclic payout disbursement processed and executed successfully.",
             group_id=group.id,
-            cycle_number=group.current_cycle - 1, # Return the round that was just paid out
+            cycle_number=executed_cycle,
             recipient_user_id=current_recipient.user_id,
             amount_disbursed=float(total_collected),
             nomba_reference=nomba_mock_ref,
-            status="success"
+            status="success",
+            group_lifecycle_status=group.status
         )
 
     except Exception as e:
