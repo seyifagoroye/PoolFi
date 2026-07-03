@@ -12,6 +12,7 @@ import logging
 from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from database import get_db
 from models import WebhookEvent, GroupMember, Group, Contribution
@@ -120,7 +121,7 @@ def process_reconciliation_pipeline(payload: dict, payload_bytes: bytes, signatu
 
         contribution.paid_amount = float(contribution.paid_amount or 0.0) + amount_paid
         contribution.transaction_id = transaction_id
-        contribution.paid_at = db.text('NOW()')
+        contribution.paid_at = func.now()
 
         expected = float(contribution.expected_amount)
         current_balance = float(contribution.paid_amount)
@@ -173,4 +174,3 @@ async def handle_payment_webhook(
     )
 
     return {"status": "received"}
-
