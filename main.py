@@ -60,4 +60,8 @@ logger.info("PoolFi core routing layers successfully initialized.")
 # Phase 6: Outbound Pot Transfers & Payouts Engine
 from routers import transfers
 app.include_router(transfers.router)
+# Phase 7: Historical Ledger Reporting Engine
+from routers import transactions
+app.include_router(transactions.router)
 
+logger.info("PoolFi transaction reporting layers successfully mounted.")

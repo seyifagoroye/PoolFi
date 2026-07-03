@@ -57,9 +57,3 @@ try:
     payout_url = f"http://127.0.0.1:8000/api/groups/{group_id}/payouts"
     payout_res = requests.post(payout_url, headers=headers)
     
-    print("\n--- TRANSFERS GATEWAY RESPONSE ---")
-    print("Status Code:", payout_res.status_code)
-    print("Response Body:", payout_res.json())
-
-except Exception as e:
-    print(f"\nPipeline Interrupted: {str(e)}")
