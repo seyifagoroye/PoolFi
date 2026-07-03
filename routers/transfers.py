@@ -112,7 +112,7 @@ async def initiate_group_payout(
     try:
         logger.info(f"Dispatching pot payout of {total_pot_amount} NGN to {recipient_user.name} via Nomba Gateway.")
         
-        transfer_response = await nomba_service.initiate_bank_transfer(
+        transfer_response = await nomba_service.initiate_payout(
             amount=total_pot_amount,
             account_number=recipient_user.bank_account_number,
             account_name=recipient_user.name,
