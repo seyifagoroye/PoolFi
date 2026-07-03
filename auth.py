@@ -12,11 +12,11 @@ from models import User
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+SECRET_KEY = os.getenv('SECRET_KEY')
+ALGORITHM = os.getenv('ALGORITHM', 'HS256')
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '30'))
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='api/auth/login')
 
 def hash_password(password: str) -> str:
     password_bytes = password.encode('utf-8')
@@ -35,7 +35,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    to_encode.update({'exp': expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def decode_access_token(token: str) -> Optional[dict]:
@@ -48,13 +48,13 @@ def decode_access_token(token: str) -> Optional[dict]:
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials, access token missing or expired.",
-        headers={"WWW-Authenticate": "Bearer"},
+        detail='Could not validate credentials, access token missing or expired.',
+        headers={'WWW-Authenticate': 'Bearer'},
     )
     payload = decode_access_token(token)
     if payload is None:
         raise credentials_exception
-    user_id: str = payload.get("sub")
+    user_id: str = payload.get('sub')
     if user_id is None:
         raise credentials_exception
     user = db.query(User).filter(User.id == user_id).first()
@@ -62,10 +62,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
+
 def get_current_coordinator(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role.value != "coordinator":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. This action requires a Coordinator role."
+            detail="Access denied. This endpoint is restricted to group coordinators."
         )
     return current_user
