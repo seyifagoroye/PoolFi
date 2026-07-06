@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from database import get_db
-from models import Group, GroupMember, Contribution, Payout
+from models import Group, GroupMember, Contribution, Payout, PayoutStatus, GroupStatus
 from auth import get_current_user
 
 logger = logging.getLogger("poolfi_core")
@@ -35,9 +35,9 @@ class PayoutExecutionResponse(BaseModel):
     message: str
     group_id: uuid.UUID
     cycle_number: int
-    recipient_user_id: int
-    amount_disbursed: float
-    nomba_reference: str
+    recipient_user_id: uuid.UUID
+    amount: float
+    nomba_transfer_ref: str
     status: str
     group_lifecycle_status: str
 
@@ -62,7 +62,7 @@ async def trigger_cyclic_pot_payout(
             detail="The requested savings group does not exist within the system schema."
         )
 
-    if group.status == "completed":
+    if group.status == GroupStatus.COMPLETED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Lifecycle Block: This rotating savings group has already concluded all cycles and is marked completed."
@@ -70,7 +70,7 @@ async def trigger_cyclic_pot_payout(
 
     current_recipient = db.query(GroupMember).filter(
         GroupMember.group_id == group.id,
-        GroupMember.draw_order == group.current_cycle
+        GroupMember.rotation_position == group.current_cycle
     ).first()
 
     if not current_recipient:
@@ -82,7 +82,7 @@ async def trigger_cyclic_pot_payout(
     existing_payout = db.query(Payout).filter(
         Payout.group_id == group.id,
         Payout.cycle_number == group.current_cycle,
-        Payout.status == "success"
+        Payout.status == "completed"
     ).first()
 
     if existing_payout:
@@ -113,12 +113,11 @@ async def trigger_cyclic_pot_payout(
     try:
         payout_record = Payout(
             group_id=group.id,
-            member_id=current_recipient.user_id,
+            recipient_id=current_recipient.user_id,
             cycle_number=group.current_cycle,
-            amount_disbursed=float(total_collected),
-            nomba_reference=nomba_mock_ref,
-            status="success",
-            executed_at=datetime.utcnow()
+            amount=float(total_collected),
+            nomba_transfer_ref=nomba_mock_ref,
+            status="completed"
         )
         db.add(payout_record)
 
@@ -126,7 +125,7 @@ async def trigger_cyclic_pot_payout(
         executed_cycle = group.current_cycle
         
         if group.current_cycle >= total_members:
-            group.status = "completed"
+            group.status = GroupStatus.COMPLETED
             logger.info(f"Lifecycle Event: Group {group.id} has successfully concluded all {total_members} rotation blocks.")
         else:
             group.current_cycle += 1
@@ -138,10 +137,10 @@ async def trigger_cyclic_pot_payout(
             group_id=group.id,
             cycle_number=executed_cycle,
             recipient_user_id=current_recipient.user_id,
-            amount_disbursed=float(total_collected),
-            nomba_reference=nomba_mock_ref,
-            status="success",
-            group_lifecycle_status=group.status
+            amount=float(total_collected),
+            nomba_transfer_ref=nomba_mock_ref,
+            status="completed",
+            group_lifecycle_status=group.status.value
         )
 
     except Exception as e:
