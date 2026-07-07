@@ -1,0 +1,61 @@
+
+PoolFi — Architecture and Security Note
+This document covers the system architecture, security decisions, and integration design for PoolFi's backend infrastructure.
+System Overview
+PoolFi is a FastAPI backend that sits between group coordinators, group members, and Nomba's payment infrastructure. It handles identity, group lifecycle, payment detection, reconciliation, and payout disbursement.
+The core data flow is:
+Coordinator creates a group
+Coordinator adds members — each member triggers an automatic Nomba virtual account creation
+Member makes a bank transfer to their unique virtual account number
+Nomba detects the transfer and fires a webhook to PoolFi's /webhooks/payment endpoint
+PoolFi reconciles the payment against the member's expected contribution
+Coordinator triggers payout — PoolFi calls Nomba's Transfers API to disburse the pot
+Authentication
+Method: JWT (JSON Web Tokens) via python-jose library
+Password hashing: bcrypt via native bcrypt library (passlib was dropped due to Python 3.12 compatibility issues)
+Token payload contains: user ID (sub), email, role (coordinator or member), and expiry
+Token expiry: 180 minutes
+All protected routes use FastAPI dependency injection via get_current_user() which decodes and validates the JWT on every request
+Role enforcement: get_current_coordinator() dependency blocks non-coordinator access to group management and payout endpoints
+IDOR prevention: every group query filters by coordinator_id == current_user.id so coordinators cannot access other coordinators' groups. Members can only access their own contribution history.
+Nomba API Integration
+Authentication: OAuth2 client credentials flow using Client ID and Private Key. Access token is fetched once and cached in memory. Token is automatically refreshed 15 minutes before expiry to prevent mid-session failures.
+Account scoping: All API calls use the parent account ID in the accountId header for authentication. Virtual accounts are created under the sub-account scope as instructed in Nomba's onboarding documentation.
+Virtual account creation: Each group member gets a unique virtual account via POST /v1/accounts/virtual with a unique accountRef derived from the group ID and user ID.
+Payout disbursement: POST /v2/transfers/bank with an X-Idempotent-Key header set to a UUID to prevent duplicate transfer processing.
+Webhook Security
+Endpoint: POST /webhooks/payment
+This endpoint is excluded from JWT authentication because Nomba calls it directly without a user token.
+Signature verification: Implemented using HMAC-SHA256. The incoming nomba-signature header is compared against a locally computed signature using the NOMBA_WEBHOOK_SECRET environment variable. Requests with invalid signatures are rejected with a 401 response.
+Honest note: Signature verification is implemented in code but was not tested end to end with live Nomba webhook events due to time constraints from power outages and illness during the final build days. The reconciliation logic itself was tested via the test_webhook.py script against the local database.
+Idempotency: Every webhook event stores the transaction_id before processing. If the same transaction_id arrives again (Nomba retries up to 5 times with exponential backoff), it is detected and skipped to prevent double-counting contributions.
+Immediate 200 response: The webhook handler returns HTTP 200 immediately upon receiving and storing the raw event, before any reconciliation processing. This prevents Nomba from treating slow processing as a failure and retrying unnecessarily.
+Reconciliation Logic
+When a payment webhook is received:
+Virtual account number is extracted from transaction.aliasAccountNumber
+Matched to a GroupMember record in the database
+If no match: logged as misdirected payment, no further processing
+Transaction ID checked against existing Contribution records for idempotency
+Expected amount fetched from the group's contribution_amount field
+Paid amount compared to expected:
+Equal: status set to paid
+Less than expected: status set to underpaid, deficit recorded
+Greater than expected: status set to overpaid, excess recorded
+WebhookEvent marked as processed
+Security Measures
+All secrets stored in environment variables via python-dotenv locally and Render dashboard in production. Nothing hardcoded.
+.env file is gitignored. No secrets appear in commit history.
+Input validation on all request bodies via Pydantic schemas with strict type enforcement.
+Error responses never expose stack traces or internal system details to callers. All unhandled exceptions are caught by a global exception handler that logs internally and returns a generic message.
+Rate limiting middleware implemented on authentication endpoints to block brute-force attacks.
+CORS configured to allow frontend access.
+Database
+PostgreSQL hosted on Render free tier.
+Six models: User, Group, GroupMember, Contribution, Payout, WebhookEvent.
+Migrations managed via Alembic.
+All primary keys are UUIDs generated server-side.
+Numeric fields for monetary amounts use SQLAlchemy Numeric type with precision 12,2 to avoid floating point errors.
+Known Limitations and Honest Gaps
+Frontend not completed due to power outages and illness during final build days. The API is fully functional and demonstrable via the /docs interface at https://poolfi-api.onrender.com/docs
+Webhook signature verification implemented but not tested with live Nomba events.
+Payout disbursement implemented but sandbox transfer may fail due to zero sub-account balance in test environment. The integration code is correct.
